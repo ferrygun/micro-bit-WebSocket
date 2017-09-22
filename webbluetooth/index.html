@@ -1,0 +1,310 @@
+<html>
+<head>
+    <title>BBC micro:bit Button Demo</title>
+    <meta name="description" content="micro:bit Button Demo with Web Bluetooth.">
+
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+
+
+    <script src="./web/bower_components/webcomponentsjs/webcomponents-lite.min.js"></script>
+
+    <!-- Polymer components -->
+    <link rel="import" href="./web/bower_components/paper-progress/paper-progress.html">
+    <link rel="import" href="./web/bower_components/paper-button/paper-button.html">
+    <link rel="import" href="./web/bower_components/iron-icons/iron-icons.html">
+    <link rel="import" href="./web/bower_components/iron-icons/image-icons.html">
+    <link rel="import" href="./web/bower_components/paper-icon-button/paper-icon-button.html">
+    <link rel="import" href="./web/bower_components/paper-card/paper-card.html">
+    <link rel="import" href="./web/bower_components/paper-dialog/paper-dialog.html">
+    <link rel="import" href="./web/bower_components/paper-toggle-button/paper-toggle-button.html">
+    <link rel="import" href="./web/bower_components/iron-flex-layout/iron-flex-layout.html">
+
+    <link rel="import" href="./web/bower_components/paper-dialog/paper-dialog.html">
+    <link rel="import" href="./web/bower_components/paper-button/paper-button.html">
+    <link rel="import" href="./web/bower_components/paper-input/paper-input.html">
+
+    <link rel="import" href="./web/bower_components/paper-styles/color.html">
+    <link rel="stylesheet" href="./web/bower_components/paper-styles/demo.css">
+
+    <style is="custom-style">
+        body {
+            background-color: var(--paper-grey-50);
+        }
+
+        paper-progress {
+            width: 100%;
+        }
+
+        paper-progress.blue {
+            paper-progress-active-color: var(--paper-light-blue-500);
+            paper-progress-secondary-color: var(--paper-light-blue-100);
+        }
+
+        paper-toggle-button.blue {
+            --paper-toggle-button-checked-bar-color: var(--paper-light-blue-500);
+            --paper-toggle-button-checked-button-color: var(--paper-light-blue-500);
+            --paper-toggle-button-checked-ink-color: var(--paper-light-blue-500);
+            --paper-toggle-button-unchecked-bar-color: var(--paper-light-blue-900);
+            --paper-toggle-button-unchecked-button-color: var(--paper-light-blue-900);
+            --paper-toggle-button-unchecked-ink-color: var(--paper-light-blue-900);
+        }
+
+        paper-button {
+            display: block;
+            width: 80px;
+            height: 40px;
+            min-width: 0em;
+            margin: 0.2em 0.2em;
+        }
+
+        paper-button.blue {
+            color: var(--paper-light-blue-500);
+            paper-button-flat-focus-color: var(--paper-light-blue-50);
+        }
+
+        #cards {
+            margin-left: auto;
+            margin-right: auto;
+            max-width: 400px;
+        }
+
+        paper-card {
+            margin-bottom: 5px;
+            margin-top: 5px;
+            width: 100%;
+        }
+
+        .flex {
+            @apply(--layout-horizontal);
+        }
+
+        paper-button.indigo {
+            background-color: var(--paper-indigo-500);
+            color: white;
+            --paper-button-raised-keyboard-focus: {
+                background-color: var(--paper-pink-a200) !important;
+                color: white !important;
+            }
+            ;
+        }
+    </style>
+</head>
+
+<body unresolved>
+    <template id="template" is="dom-bind">
+      <div id="cards">
+        <paper-card heading="BBC micro:bit WebSocket Demo [Gavag]">
+          <div class="card-content">
+            <paper-toggle-button class="blue" id="connect">Connect</paper-toggle-button>
+            <paper-progress id="progress" indeterminate></paper-progress>
+          </div>
+        </paper-card>
+
+
+
+        <paper-dialog id="no-bluetooth">
+          <h2>No Web Bluetooth</h2>
+          <p>The Web Bluetooth API is missing. Please enable it at
+          chrome://flags/#enable-web-bluetooth and try again.</p>
+        </paper-dialog>
+
+        <paper-dialog id="errorDialog">
+          <h2>Error</h2>
+          <p>Could not connect to bluetooth device!</p>
+        </paper-dialog>
+      </div>
+    </template>
+
+     <script>
+        'use strict';
+        document.addEventListener('WebComponentsReady', () => {
+     
+            let connectToggle = document.querySelector('#connect');
+            let progress = document.querySelector('#progress');
+            let dialog = document.querySelector('#errorDialog');
+
+            let gattServer;
+            
+            let LEDcommandService;
+            let LEDCharacteristic;         //for LED
+
+           
+            let busy = false;
+            let commandQueue = [];
+            let counter = 0, counters = 0;
+            let wssurl = 'wss://microbitsg.herokuapp.com';
+            
+            progress.hidden = true;
+
+            let lastMessageSent;
+            PingPong();
+
+            let socket = new WebSocket(wssurl);
+            socket.onmessage = function (message) {
+                //console.log(message.data);
+                if(message.data != '@Ping')
+                    sendCommand(message.data);
+                
+            };
+
+            socket.onerror = function (error) {
+                console.log('WebSocket error: ' + error);
+            };
+
+            /**
+             * Check if browser supports Web Bluetooth API.
+             */
+            if (navigator.bluetooth == undefined) {
+                document.getElementById("no-bluetooth").style.display = "block";
+                document.getElementById("no-bluetooth").open();
+            }
+
+
+            function PingPong() {
+                setInterval(
+                    
+                    function(){
+                        let interval = 20 * 1000;
+                        let currentTime = new Date().getTime();
+                        if( !lastMessageSent || lastMessageSent < currentTime - interval ){
+                            let socket = new WebSocket(wssurl);
+                            socket.onopen = function () {
+                                socket.send('@Ping');
+                            };
+
+                            lastMessageSent = currentTime;
+                        }
+                    },
+                 1000
+                );
+            }
+            /**
+             * Reset the app variable states.
+             */
+            function resetVariables() {
+                busy = false;
+                progress.hidden = true;
+                gattServer = null;
+                
+                LEDCharacteristic = null;
+                LEDcommandService = null;
+
+                commandQueue = []
+                counter = 0;
+                counters = 0;
+                
+                connectToggle.checked = false;
+            }
+
+            /**
+             * API error handler.
+             */
+            function handleError(error) {
+                console.log(error);
+                resetVariables();
+                dialog.open();
+            }
+
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+        
+
+           function sendCommand(cmd) {
+                if (LEDCharacteristic) {
+                    // Handle one command at a time
+                    if (busy) {
+                        // Queue commands
+                        commandQueue.push(cmd);
+                        return Promise.resolve();
+                    }
+            
+                    busy = true;
+                    let bytes = []; // char codes
+            
+                    for (let i = 0; i < cmd.length; ++i) {
+                        if (i <=19) {
+                            let code = cmd.charCodeAt(i);
+                            bytes = bytes.concat([code]);
+                        }
+                    }
+
+                    cmd = new Uint8Array(bytes);
+                        
+                    return LEDCharacteristic.writeValue(cmd).then(() => {
+                        busy = false;
+                        // Get next command from queue
+                        let nextCommand = commandQueue.shift();
+                        if (nextCommand) {
+                            sendCommand(nextCommand);
+                        }
+                    });
+                } else {
+                    return Promise.resolve();
+                }
+            }
+
+            /**
+             * Connect to command characteristic.
+             */
+            connectToggle.addEventListener('click', () => {
+                if (gattServer != null && gattServer.connected) {
+                    if (gattServer.disconnect) {
+                        console.log('Disconnecting...');
+                        gattServer.disconnect();
+                    }
+                    resetVariables();
+                } else {
+                    console.log('Connecting...');
+                    connectToggle.checked = true;
+                    progress.hidden = false;
+                    if (LEDCharacteristic == null) {
+                        navigator.bluetooth.requestDevice({
+                                filters: [{
+                                    namePrefix: 'BBC micro:bit [gavag]',
+                                }],
+                                optionalServices: ['e95dd91d-251d-470a-a062-fa1922dfa9a8']  //LEDSERVICE_SERVICE_UUID
+                            })
+                            .then(device => {
+                                console.log('Connecting to GATT Server...');
+                                return device.gatt.connect();
+                            })
+
+
+                            // LED Services
+                            .then(server => {
+                                gattServer = server;
+                                console.log('> Found GATT server');
+                                return gattServer.getPrimaryService('e95dd91d-251d-470a-a062-fa1922dfa9a8'); //LEDSERVICE_SERVICE_UUID
+                            })
+                            .then(service => {
+                                console.log('> Found LED command service');
+                                LEDcommandService = service;
+                                // Get write characteristic
+                                //return commandService.getCharacteristic('e95d7b77-251d-470a-a062-fa1922dfa9a8'); //LEDMATRIXSTATE_CHARACTERISTIC_UUID
+                                return LEDcommandService.getCharacteristic('e95d93ee-251d-470a-a062-fa1922dfa9a8'); //LEDMATRIXSTATE_CHARACTERISTIC_UUID
+                            })
+                            .then(characteristic => {
+                                console.log('> Found LED write characteristic');
+                                LEDCharacteristic = characteristic;
+                                progress.hidden = true;
+                            })
+
+
+                            .catch(handleError);
+                    } else {
+                        progress.hidden = true;
+                    }
+                }
+            });
+        });
+    </script>
+
+
+</body>
+
+</html>
