@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+  </head>
+  <script>
+  
+   function onSuccess(data) {
+   
+    var socket = new WebSocket('wss://microbitsg.herokuapp.com');
+    socket.onopen = function () {
+        socket.send(data);
+        google.script.host.close();
+    };
+
+    socket.onmessage = function (message) {
+        
+    };
+
+    socket.onerror = function (error) {
+        console.log('WebSocket error: ' + error);
+    };
+    
+   }
+   
+  google.script.run.withSuccessHandler(onSuccess).send2uBit();
+</script>
+
+</html>
